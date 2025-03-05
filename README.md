@@ -1,4 +1,4 @@
-# Network Performance Monitor
+# Codex Network Performance Monitor
 
 A Python script that monitors network performance by performing regular speed tests and IP checks, storing results in PostgreSQL, and sending periodic email reports.
 
