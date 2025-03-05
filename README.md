@@ -13,6 +13,7 @@ A Python script that monitors network performance by performing regular speed te
 - PDF and CSV report attachments
 - Comprehensive error logging
 - Docker support for easy deployment
+- Automated tests with pytest
 
 ## Requirements
 
@@ -69,6 +70,50 @@ A Python script that monitors network performance by performing regular speed te
    ```bash
    docker-compose logs -f app
    ```
+
+## Testing
+
+The project includes a comprehensive test suite using pytest. The tests cover:
+- Speed test functionality
+- Database operations
+- Email reporting
+- Error handling
+- Input validation
+
+### Running Tests
+
+1. Install test dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. Configure test environment:
+   The test configuration is in `pytest.ini`. By default, it uses a separate test database
+   to avoid interfering with your production data.
+
+3. Run the tests:
+   ```bash
+   pytest
+   ```
+
+   Or with coverage report:
+   ```bash
+   pytest --cov=network_monitor tests/
+   ```
+
+### Test Categories
+
+- `test_network_monitor.py`: Core functionality tests
+  - Speed testing
+  - Database operations
+  - Network checks
+  - Error handling
+
+- `test_email_reports.py`: Email reporting tests
+  - Report generation
+  - Email sending
+  - Attachment handling
+  - Error cases
 
 ## Environment Variables
 

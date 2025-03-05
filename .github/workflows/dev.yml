@@ -1,0 +1,33 @@
+name: dev
+
+on:
+  push:
+    branches:
+      - dev # Triggered on pushes to the dev branch
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          show_progress: true
+          fetch-depth: 2
+    
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run linting (flake8)
+        run: flake8
+      
+      - name: Run tests (pytest)
+        run: pytest
+          
+
