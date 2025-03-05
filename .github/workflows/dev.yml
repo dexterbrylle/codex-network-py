@@ -15,7 +15,6 @@ jobs:
           show_progress: true
           fetch-depth: 2
     
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -24,13 +23,29 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run linting (flake8)
-        run: flake8 network_monitor.py
-      
-      - name: Run formatting (black)
-        run: black network_monitor.py
-      
-      - name: Run tests (pytest)
-        run: pytest
+      - name: Format code with black
+        run: |
+          echo "Running black formatter..."
+          black . --check --diff
+        # Using --check to verify without modifying files
+        # Using --diff to show what would be changed
+
+      - name: Run linting with flake8
+        run: |
+          echo "Running flake8 linter..."
+          flake8 .
+        # Will fail if there are any violations
+
+      - name: Run tests
+        run: |
+          echo "Running pytest..."
+          pytest -v --cov=network_monitor tests/
+          
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: .coverage
+          if-no-files-found: warn
           
 
