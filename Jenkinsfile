@@ -4,7 +4,7 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                git url: 'https://github.com/dexterbrylle/codex-network-py.git', branch: 'main'
+                git credentialsId: 'Github-Token', url: 'https://github.com/dexterbrylle/codex-network-py.git', branch: 'main' // Or your main branch name
             }
         }
 
