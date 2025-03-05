@@ -25,7 +25,10 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run linting (flake8)
-        run: flake8
+        run: flake8 network_monitor.py
+      
+      - name: Run formatting (black)
+        run: black network_monitor.py
       
       - name: Run tests (pytest)
         run: pytest
