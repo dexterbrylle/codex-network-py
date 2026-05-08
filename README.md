@@ -1,195 +1,137 @@
 # Network Performance Monitor
 
-A Python script that monitors network performance by performing regular speed tests and IP checks, storing results in PostgreSQL, and sending periodic email reports.
+Monitors ISP connection quality via scheduled speed tests. Tracks contractual SLA compliance, sends real-time breach alerts (Discord + email), and stores everything in PostgreSQL for Grafana dashboards.
 
 ## Features
 
 - Speed tests every 30 minutes (download, upload, latency)
 - Public IP address monitoring
-- PostgreSQL database storage
-- Email reports:
-  - 6-hour summaries
-  - Daily detailed reports (11:59 PM)
+- **ISP SLA breach detection** — alerts when speeds drop below contractual minimum (>20% of checks in 24h rolling window)
+- **Breach alerts**: Discord webhook (real-time) + HTML email with CSV evidence
+- **Episode tracking** — breach start/end recorded in `sla_breach_episodes` table
+- PostgreSQL storage (Grafana-ready via direct DB query)
+- Periodic email reports (6h summaries + daily)
 - PDF and CSV report attachments
-- Comprehensive error logging
-- Docker support for easy deployment
+- Docker support
+- Modular codebase, single container
 - Automated tests with pytest
 
-## Requirements
+## Architecture
 
-### Standard Installation
-- Python 3.6+
-- PostgreSQL database
-- SMTP email account (e.g., Gmail)
-- Required Python packages (see requirements.txt)
+```
+main.py              → thin entry point
+monitor/
+  config.py          → env loading, validation
+  db.py              → PostgreSQL: connect, init, save, SLA episode CRUD
+  speedtest.py       → Ookla speed test + IP lookup
+  sla.py             → threshold evaluation, breach detection, episode state machine
+  alerts.py          → Discord webhook + HTML breach email with CSV
+  reports.py         → periodic PDF/CSV email reports
+  scheduler.py       → schedule setup, main check loop
+```
 
-### Docker Installation
-- Docker
-- Docker Compose
+## Setup (Docker)
 
-## Setup
+```bash
+cp .env.example .env     # edit with your values
+docker-compose up -d
+```
 
-### Standard Installation
+## Setup (Standard)
 
-1. Install required packages:
-   ```bash
-   pip install -r requirements.txt
-   ```
+```bash
+pip install -r requirements.txt
+cp .env.example .env     # edit with your values
+python main.py
+```
 
-2. Copy the example environment file and configure it:
-   ```bash
-   cp .env.example .env
-   ```
-   Edit `.env` with your configuration values.
-
-3. Run the script:
-   ```bash
-   python network_monitor.py
-   ```
-
-### Docker Installation
-
-1. Copy the example environment file and configure it:
-   ```bash
-   cp .env.example .env
-   ```
-   Edit `.env` with your configuration values.
-
-2. Build and start the containers:
-   ```bash
-   docker-compose up -d
-   ```
-
-   This will:
-   - Build the application container
-   - Start PostgreSQL container
-   - Create necessary volumes and networks
-   - Mount logs directory
-
-3. View logs:
-   ```bash
-   docker-compose logs -f app
-   ```
-
-## Testing
-
-The project includes a comprehensive test suite using pytest. The tests cover:
-- Speed test functionality
-- Database operations
-- Email reporting
-- Error handling
-- Input validation
-
-### Running Tests
-
-1. Install test dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-2. Configure test environment:
-   The test configuration is in `pytest.ini`. By default, it uses a separate test database
-   to avoid interfering with your production data.
-
-3. Run the tests:
-   ```bash
-   pytest
-   ```
-
-   Or with coverage report:
-   ```bash
-   pytest --cov=network_monitor tests/
-   ```
-
-### Test Categories
-
-- `test_network_monitor.py`: Core functionality tests
-  - Speed testing
-  - Database operations
-  - Network checks
-  - Error handling
-
-- `test_email_reports.py`: Email reporting tests
-  - Report generation
-  - Email sending
-  - Attachment handling
-  - Error cases
+**Requires**: Python 3.9+, running PostgreSQL, SMTP account.
 
 ## Environment Variables
 
-Configure the following variables in `.env`:
-
 ```ini
-# Database Configuration
-DB_HOST=localhost      # Use 'db' for Docker
+# ISP Plan (contractual SLA)
+ISP_PLAN_NAME="Plan 1999"
+ISP_PLAN_SPEED=500
+ISP_PLAN_UPLOAD_SPEED=500
+ISP_PLAN_THRESHOLD=150        # contractual minimum download Mbps
+ISP_PLAN_UPLOAD_THRESHOLD=150
+
+# Speed alert thresholds (periodic report "slow incident" counts)
+SPEED_ALERT_DOWNLOAD=500
+SPEED_ALERT_UPLOAD=300
+
+# Discord
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
+
+# Database
+DB_HOST=db                    # 'localhost' for non-Docker
 DB_NAME=network_monitor
 DB_USER=your_db_user
-DB_PASSWORD=your_db_password
+DB_PASSWORD=your_secure_password
 
-# Email Configuration
+# Email
 SMTP_SERVER=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=your_email@gmail.com
 SMTP_PASSWORD=your_app_password
 EMAIL_RECIPIENT=recipient@example.com
 
-# Network Thresholds (Mbps)
-DOWNLOAD_THRESHOLD=500
-UPLOAD_THRESHOLD=300
-
-# Monitoring Configuration
+# Schedule
 CHECK_INTERVAL_MINUTES=30
 SUMMARY_INTERVAL_HOURS=6
 DAILY_REPORT_TIME=23:59
 ```
 
-Note: For Gmail, you'll need to use an App Password. See [Google Account Help](https://support.google.com/accounts/answer/185833?hl=en) for instructions.
+## How SLA Breach Detection Works
 
-## Logging
+1. Every speed test is evaluated: download < `ISP_PLAN_THRESHOLD` OR upload < `ISP_PLAN_UPLOAD_THRESHOLD` → flagged `below_threshold`
+2. After each test, the last 48 checks (24h rolling window) are counted
+3. If >9 checks (20%+) are below threshold → **SLA breach declared**
+4. Breach episode starts, Discord alert fires, HTML email with CSV evidence sent
+5. Alerts suppressed until breach resolves (all future checks stay under threshold)
+6. Episode closed when window clears, `sla_breach_episodes.ended_at` populated
 
-All activities and errors are logged to `logs/network_monitor.log` with timestamps and log levels.
+**Edge cases**: failed speed tests (NULL) count in total but not as violating (conservative). Startup (< 48 checks) defers evaluation.
 
-## Reports
+## Grafana Integration
 
-### 6-Hour Summary
-- Sent every 6 hours
-- Includes:
-  - Average speeds and latency
-  - IP address changes
-  - Slow speed incidents
-  - PDF report
-  - CSV data export
+Point Grafana at the same PostgreSQL:
 
-### Daily Report
-- Sent at 11:59 PM
-- Same format as 6-hour summary but covers 24 hours
+```sql
+-- Speed over time
+SELECT timestamp, download_speed, upload_speed FROM network_checks ORDER BY timestamp
 
-## Error Handling
+-- Below-threshold markers
+SELECT timestamp FROM network_checks WHERE below_threshold = true
 
-The script includes comprehensive error handling for:
-- Network connectivity issues
-- Database connection problems
-- Email sending failures
-- Speed test errors
+-- SLA breach episodes (duration + severity)
+SELECT * FROM sla_breach_episodes ORDER BY started_at
 
-All errors are logged to `network_monitor.log`.
+-- Violation % (rolling 24h)
+SELECT COUNT(*) FILTER (WHERE below_threshold) * 100.0 / COUNT(*) AS pct
+FROM network_checks WHERE timestamp > NOW() - INTERVAL '24 hours'
+```
 
-## Docker Volumes
+## Testing
 
-The following Docker volumes are used:
-- `postgres_data`: Persists PostgreSQL data
-- `./logs`: Mounts the logs directory to the host machine
+```bash
+uv sync --group dev
+export DB_HOST=localhost     # tests need local PostgreSQL
+uv run pytest tests/
+```
+
+Tests cover: speed test mocking, SLA breach logic (all state transitions), NULL handling, startup edge cases, Discord/email alert verification, email attachment generation. DB integration test needs a local PostgreSQL instance.
 
 ## Maintenance
 
-### Backup Database
-To backup the PostgreSQL database:
 ```bash
+# Backup
 docker-compose exec db pg_dump -U $DB_USER $DB_NAME > backup.sql
-```
 
-### Restore Database
-To restore from a backup:
-```bash
+# Restore
 docker-compose exec -T db psql -U $DB_USER $DB_NAME < backup.sql
-``` 
+
+# Logs
+docker-compose logs -f app
+```

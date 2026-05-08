@@ -1,9 +1,7 @@
 FROM python:3.11-slim
 
-# Set working directory
 WORKDIR /app
 
-# Install system dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     gcc \
@@ -12,19 +10,16 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# Copy application code
-COPY network_monitor.py .
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev
+
+COPY monitor/ monitor/
+COPY main.py .
 COPY .env .
 
-# Create directory for logs
 RUN mkdir -p /app/logs
-
-# Set environment variable for logs directory
 ENV LOG_DIR=/app/logs
 
-# Run the application
-CMD ["python", "network_monitor.py"] 
+CMD ["uv", "run", "python", "main.py"]
